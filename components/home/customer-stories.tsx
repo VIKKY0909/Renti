@@ -24,7 +24,7 @@ const stories = [
   {
     name: "Sapna Mahajan",
     location: "Khargone",
-    image: "/sapna.jpg",
+    image: "/sapna.JPG",
     story: "This saree is perfect for my mehendi. Rentimade is so good , highly recommended.",
     rating: 5,
     outfit: "Designer Lehenga",
