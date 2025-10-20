@@ -1,0 +1,557 @@
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.admin_dashboard_stats (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  stat_date date NOT NULL UNIQUE,
+  total_products integer DEFAULT 0,
+  pending_products integer DEFAULT 0,
+  approved_products integer DEFAULT 0,
+  rejected_products integer DEFAULT 0,
+  total_orders integer DEFAULT 0,
+  pending_orders integer DEFAULT 0,
+  confirmed_orders integer DEFAULT 0,
+  completed_orders integer DEFAULT 0,
+  cancelled_orders integer DEFAULT 0,
+  total_revenue numeric DEFAULT 0,
+  pending_payments numeric DEFAULT 0,
+  total_users integer DEFAULT 0,
+  active_users integer DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT admin_dashboard_stats_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.admin_notifications (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  type text NOT NULL CHECK (type = ANY (ARRAY['new_product'::text, 'new_order'::text, 'order_status_change'::text, 'payment_received'::text, 'product_rejected'::text, 'system_alert'::text])),
+  title text NOT NULL,
+  message text NOT NULL,
+  data jsonb,
+  is_read boolean DEFAULT false,
+  priority text DEFAULT 'medium'::text CHECK (priority = ANY (ARRAY['low'::text, 'medium'::text, 'high'::text, 'urgent'::text])),
+  created_at timestamp with time zone DEFAULT now(),
+  read_at timestamp with time zone,
+  CONSTRAINT admin_notifications_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.bank_details (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL UNIQUE,
+  account_holder_name text NOT NULL,
+  account_number text NOT NULL,
+  ifsc_code text NOT NULL,
+  bank_name text NOT NULL,
+  branch_name text,
+  upi_id text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT bank_details_pkey PRIMARY KEY (id),
+  CONSTRAINT bank_details_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.categories (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  name text NOT NULL UNIQUE,
+  slug text NOT NULL UNIQUE,
+  description text,
+  image_url text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT categories_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.earnings (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  owner_id uuid NOT NULL,
+  order_id uuid NOT NULL,
+  amount numeric NOT NULL,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'processing'::text, 'paid'::text])),
+  payout_date timestamp with time zone,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT earnings_pkey PRIMARY KEY (id),
+  CONSTRAINT earnings_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id),
+  CONSTRAINT earnings_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
+);
+CREATE TABLE public.faqs (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  question text NOT NULL,
+  answer text NOT NULL,
+  category text,
+  order_index integer DEFAULT 0,
+  is_published boolean DEFAULT true,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT faqs_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.inventory_tracking (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  product_id uuid NOT NULL,
+  status text NOT NULL CHECK (status = ANY (ARRAY['available'::text, 'rented'::text, 'maintenance'::text, 'damaged'::text, 'lost'::text])),
+  order_id uuid,
+  notes text,
+  changed_by uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT inventory_tracking_pkey PRIMARY KEY (id),
+  CONSTRAINT inventory_tracking_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT inventory_tracking_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT inventory_tracking_changed_by_fkey FOREIGN KEY (changed_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.order_items (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  order_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  quantity integer DEFAULT 1,
+  rental_price numeric NOT NULL,
+  security_deposit numeric NOT NULL,
+  discount numeric DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT order_items_pkey PRIMARY KEY (id),
+  CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT order_items_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+CREATE TABLE public.order_status_history (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  order_id uuid NOT NULL,
+  status text NOT NULL,
+  payment_status text,
+  notes text,
+  updated_by uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT order_status_history_pkey PRIMARY KEY (id),
+  CONSTRAINT order_status_history_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id),
+  CONSTRAINT order_status_history_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.orders (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  owner_id uuid NOT NULL,
+  rental_start_date date NOT NULL,
+  rental_end_date date NOT NULL,
+  rental_days integer NOT NULL,
+  rental_price numeric NOT NULL,
+  security_deposit numeric NOT NULL,
+  discount numeric DEFAULT 0,
+  total_amount numeric NOT NULL,
+  selected_size text,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'confirmed'::text, 'picked_up'::text, 'dispatched'::text, 'delivered'::text, 'picked_up_for_return'::text, 'returned'::text, 'completed'::text, 'cancelled'::text, 'rejected'::text])),
+  payment_status text DEFAULT 'pending'::text CHECK (payment_status = ANY (ARRAY['pending'::text, 'paid'::text, 'refunded'::text])),
+  tracking_number text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  payment_method text DEFAULT 'card'::text,
+  admin_notes text,
+  customer_notes text,
+  pickup_address text,
+  delivery_address text,
+  pickup_scheduled_date timestamp with time zone,
+  delivery_scheduled_date timestamp with time zone,
+  return_scheduled_date timestamp with time zone,
+  actual_pickup_date timestamp with time zone,
+  actual_delivery_date timestamp with time zone,
+  actual_return_date timestamp with time zone,
+  shipping_cost numeric DEFAULT 0,
+  late_fee numeric DEFAULT 0,
+  damage_fee numeric DEFAULT 0,
+  final_amount numeric,
+  refund_amount numeric DEFAULT 0,
+  status_updated_by uuid,
+  status_updated_at timestamp with time zone,
+  CONSTRAINT orders_pkey PRIMARY KEY (id),
+  CONSTRAINT orders_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT orders_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT orders_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id),
+  CONSTRAINT orders_status_updated_by_fkey FOREIGN KEY (status_updated_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.payment_transactions (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  order_id uuid NOT NULL,
+  transaction_id text UNIQUE,
+  amount numeric NOT NULL,
+  type text NOT NULL CHECK (type = ANY (ARRAY['rental'::text, 'security_deposit'::text, 'shipping'::text, 'late_fee'::text, 'damage_fee'::text, 'refund'::text])),
+  status text NOT NULL CHECK (status = ANY (ARRAY['pending'::text, 'processing'::text, 'completed'::text, 'failed'::text, 'refunded'::text])),
+  payment_method text,
+  gateway_response jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT payment_transactions_pkey PRIMARY KEY (id),
+  CONSTRAINT payment_transactions_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
+);
+CREATE TABLE public.product_status_history (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  product_id uuid NOT NULL,
+  status text NOT NULL,
+  reason text,
+  notes text,
+  updated_by uuid,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT product_status_history_pkey PRIMARY KEY (id),
+  CONSTRAINT product_status_history_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT product_status_history_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.products (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  owner_id uuid NOT NULL,
+  category_id uuid NOT NULL,
+  title text NOT NULL,
+  description text NOT NULL,
+  short_description text,
+  brand text,
+  color text,
+  fabric text,
+  occasion text,
+  rental_price numeric NOT NULL,
+  security_deposit numeric NOT NULL,
+  original_price numeric,
+  discount_percentage integer DEFAULT 0,
+  bust numeric,
+  waist numeric,
+  hip numeric,
+  length numeric,
+  sleeve_length text CHECK (sleeve_length = ANY (ARRAY['sleeveless'::text, 'short'::text, '3/4'::text, 'full'::text])),
+  shoulder numeric,
+  images ARRAY DEFAULT '{}'::text[],
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'under_review'::text, 'approved'::text, 'rejected'::text, 'suspended'::text, 'unavailable'::text])),
+  is_available boolean DEFAULT true,
+  views integer DEFAULT 0,
+  total_rentals integer DEFAULT 0,
+  average_rating numeric DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  condition text DEFAULT 'good'::text CHECK (condition IS NULL OR (condition = ANY (ARRAY['new'::text, 'excellent'::text, 'good'::text, 'fair'::text]))),
+  available_from date,
+  available_until date,
+  rejection_reason text,
+  admin_notes text,
+  approved_by uuid,
+  approved_at timestamp with time zone,
+  rejected_by uuid,
+  rejected_at timestamp with time zone,
+  condition_details text,
+  care_instructions text,
+  size_guide text,
+  availability_status text DEFAULT 'available'::text CHECK (availability_status = ANY (ARRAY['available'::text, 'rented'::text, 'maintenance'::text, 'unavailable'::text])),
+  CONSTRAINT products_pkey PRIMARY KEY (id),
+  CONSTRAINT products_owner_id_fkey FOREIGN KEY (owner_id) REFERENCES public.profiles(id),
+  CONSTRAINT products_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id),
+  CONSTRAINT products_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.profiles(id),
+  CONSTRAINT products_rejected_by_fkey FOREIGN KEY (rejected_by) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.profiles (
+  id uuid NOT NULL,
+  email text NOT NULL,
+  full_name text,
+  phone text,
+  city text,
+  state text,
+  pincode text,
+  avatar_url text,
+  is_admin boolean DEFAULT false,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT profiles_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.reviews (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  order_id uuid,
+  rating integer NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment text,
+  images ARRAY DEFAULT '{}'::text[],
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT reviews_pkey PRIMARY KEY (id),
+  CONSTRAINT reviews_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT reviews_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
+  CONSTRAINT reviews_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id)
+);
+CREATE TABLE public.testimonials (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid,
+  name text NOT NULL,
+  avatar_url text,
+  content text NOT NULL,
+  rating integer CHECK (rating >= 1 AND rating <= 5),
+  is_featured boolean DEFAULT false,
+  status text DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT testimonials_pkey PRIMARY KEY (id),
+  CONSTRAINT testimonials_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.user_addresses (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  address_type text NOT NULL DEFAULT 'home'::text CHECK (address_type = ANY (ARRAY['home'::text, 'work'::text, 'other'::text])),
+  is_default boolean DEFAULT false,
+  full_name text NOT NULL,
+  phone text NOT NULL,
+  address_line_1 text NOT NULL,
+  address_line_2 text,
+  city text NOT NULL,
+  state text NOT NULL,
+  pincode text NOT NULL,
+  landmark text,
+  instructions text,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT user_addresses_pkey PRIMARY KEY (id),
+  CONSTRAINT user_addresses_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id)
+);
+CREATE TABLE public.wishlist (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  product_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT wishlist_pkey PRIMARY KEY (id),
+  CONSTRAINT wishlist_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.profiles(id),
+  CONSTRAINT wishlist_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id)
+);
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE auth.audit_log_entries (
+  instance_id uuid,
+  id uuid NOT NULL,
+  payload json,
+  created_at timestamp with time zone,
+  ip_address character varying NOT NULL DEFAULT ''::character varying,
+  CONSTRAINT audit_log_entries_pkey PRIMARY KEY (id)
+);
+CREATE TABLE auth.flow_state (
+  id uuid NOT NULL,
+  user_id uuid,
+  auth_code text NOT NULL,
+  code_challenge_method USER-DEFINED NOT NULL,
+  code_challenge text NOT NULL,
+  provider_type text NOT NULL,
+  provider_access_token text,
+  provider_refresh_token text,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  authentication_method text NOT NULL,
+  auth_code_issued_at timestamp with time zone,
+  CONSTRAINT flow_state_pkey PRIMARY KEY (id)
+);
+CREATE TABLE auth.identities (
+  provider_id text NOT NULL,
+  user_id uuid NOT NULL,
+  identity_data jsonb NOT NULL,
+  provider text NOT NULL,
+  last_sign_in_at timestamp with time zone,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  email text DEFAULT lower((identity_data ->> 'email'::text)),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT identities_pkey PRIMARY KEY (id),
+  CONSTRAINT identities_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE auth.instances (
+  id uuid NOT NULL,
+  uuid uuid,
+  raw_base_config text,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  CONSTRAINT instances_pkey PRIMARY KEY (id)
+);
+CREATE TABLE auth.mfa_amr_claims (
+  session_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  authentication_method text NOT NULL,
+  id uuid NOT NULL,
+  CONSTRAINT mfa_amr_claims_pkey PRIMARY KEY (id),
+  CONSTRAINT mfa_amr_claims_session_id_fkey FOREIGN KEY (session_id) REFERENCES auth.sessions(id)
+);
+CREATE TABLE auth.mfa_challenges (
+  id uuid NOT NULL,
+  factor_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  verified_at timestamp with time zone,
+  ip_address inet NOT NULL,
+  otp_code text,
+  web_authn_session_data jsonb,
+  CONSTRAINT mfa_challenges_pkey PRIMARY KEY (id),
+  CONSTRAINT mfa_challenges_auth_factor_id_fkey FOREIGN KEY (factor_id) REFERENCES auth.mfa_factors(id)
+);
+CREATE TABLE auth.mfa_factors (
+  id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  friendly_name text,
+  factor_type USER-DEFINED NOT NULL,
+  status USER-DEFINED NOT NULL,
+  created_at timestamp with time zone NOT NULL,
+  updated_at timestamp with time zone NOT NULL,
+  secret text,
+  phone text,
+  last_challenged_at timestamp with time zone UNIQUE,
+  web_authn_credential jsonb,
+  web_authn_aaguid uuid,
+  CONSTRAINT mfa_factors_pkey PRIMARY KEY (id),
+  CONSTRAINT mfa_factors_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE auth.oauth_clients (
+  id uuid NOT NULL,
+  client_id text NOT NULL UNIQUE,
+  client_secret_hash text NOT NULL,
+  registration_type USER-DEFINED NOT NULL,
+  redirect_uris text NOT NULL,
+  grant_types text NOT NULL,
+  client_name text CHECK (char_length(client_name) <= 1024),
+  client_uri text CHECK (char_length(client_uri) <= 2048),
+  logo_uri text CHECK (char_length(logo_uri) <= 2048),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  deleted_at timestamp with time zone,
+  CONSTRAINT oauth_clients_pkey PRIMARY KEY (id)
+);
+CREATE TABLE auth.one_time_tokens (
+  id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  token_type USER-DEFINED NOT NULL,
+  token_hash text NOT NULL CHECK (char_length(token_hash) > 0),
+  relates_to text NOT NULL,
+  created_at timestamp without time zone NOT NULL DEFAULT now(),
+  updated_at timestamp without time zone NOT NULL DEFAULT now(),
+  CONSTRAINT one_time_tokens_pkey PRIMARY KEY (id),
+  CONSTRAINT one_time_tokens_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE auth.refresh_tokens (
+  instance_id uuid,
+  id bigint NOT NULL DEFAULT nextval('auth.refresh_tokens_id_seq'::regclass),
+  token character varying UNIQUE,
+  user_id character varying,
+  revoked boolean,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  parent character varying,
+  session_id uuid,
+  CONSTRAINT refresh_tokens_pkey PRIMARY KEY (id),
+  CONSTRAINT refresh_tokens_session_id_fkey FOREIGN KEY (session_id) REFERENCES auth.sessions(id)
+);
+CREATE TABLE auth.saml_providers (
+  id uuid NOT NULL,
+  sso_provider_id uuid NOT NULL,
+  entity_id text NOT NULL UNIQUE CHECK (char_length(entity_id) > 0),
+  metadata_xml text NOT NULL CHECK (char_length(metadata_xml) > 0),
+  metadata_url text CHECK (metadata_url = NULL::text OR char_length(metadata_url) > 0),
+  attribute_mapping jsonb,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  name_id_format text,
+  CONSTRAINT saml_providers_pkey PRIMARY KEY (id),
+  CONSTRAINT saml_providers_sso_provider_id_fkey FOREIGN KEY (sso_provider_id) REFERENCES auth.sso_providers(id)
+);
+CREATE TABLE auth.saml_relay_states (
+  id uuid NOT NULL,
+  sso_provider_id uuid NOT NULL,
+  request_id text NOT NULL CHECK (char_length(request_id) > 0),
+  for_email text,
+  redirect_to text,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  flow_state_id uuid,
+  CONSTRAINT saml_relay_states_pkey PRIMARY KEY (id),
+  CONSTRAINT saml_relay_states_sso_provider_id_fkey FOREIGN KEY (sso_provider_id) REFERENCES auth.sso_providers(id),
+  CONSTRAINT saml_relay_states_flow_state_id_fkey FOREIGN KEY (flow_state_id) REFERENCES auth.flow_state(id)
+);
+CREATE TABLE auth.schema_migrations (
+  version character varying NOT NULL,
+  CONSTRAINT schema_migrations_pkey PRIMARY KEY (version)
+);
+CREATE TABLE auth.sessions (
+  id uuid NOT NULL,
+  user_id uuid NOT NULL,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  factor_id uuid,
+  aal USER-DEFINED,
+  not_after timestamp with time zone,
+  refreshed_at timestamp without time zone,
+  user_agent text,
+  ip inet,
+  tag text,
+  CONSTRAINT sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE auth.sso_domains (
+  id uuid NOT NULL,
+  sso_provider_id uuid NOT NULL,
+  domain text NOT NULL CHECK (char_length(domain) > 0),
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  CONSTRAINT sso_domains_pkey PRIMARY KEY (id),
+  CONSTRAINT sso_domains_sso_provider_id_fkey FOREIGN KEY (sso_provider_id) REFERENCES auth.sso_providers(id)
+);
+CREATE TABLE auth.sso_providers (
+  id uuid NOT NULL,
+  resource_id text CHECK (resource_id = NULL::text OR char_length(resource_id) > 0),
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  disabled boolean,
+  CONSTRAINT sso_providers_pkey PRIMARY KEY (id)
+);
+CREATE TABLE auth.users (
+  instance_id uuid,
+  id uuid NOT NULL,
+  aud character varying,
+  role character varying,
+  email character varying,
+  encrypted_password character varying,
+  email_confirmed_at timestamp with time zone,
+  invited_at timestamp with time zone,
+  confirmation_token character varying,
+  confirmation_sent_at timestamp with time zone,
+  recovery_token character varying,
+  recovery_sent_at timestamp with time zone,
+  email_change_token_new character varying,
+  email_change character varying,
+  email_change_sent_at timestamp with time zone,
+  last_sign_in_at timestamp with time zone,
+  raw_app_meta_data jsonb,
+  raw_user_meta_data jsonb,
+  is_super_admin boolean,
+  created_at timestamp with time zone,
+  updated_at timestamp with time zone,
+  phone text DEFAULT NULL::character varying UNIQUE,
+  phone_confirmed_at timestamp with time zone,
+  phone_change text DEFAULT ''::character varying,
+  phone_change_token character varying DEFAULT ''::character varying,
+  phone_change_sent_at timestamp with time zone,
+  confirmed_at timestamp with time zone DEFAULT LEAST(email_confirmed_at, phone_confirmed_at),
+  email_change_token_current character varying DEFAULT ''::character varying,
+  email_change_confirm_status smallint DEFAULT 0 CHECK (email_change_confirm_status >= 0 AND email_change_confirm_status <= 2),
+  banned_until timestamp with time zone,
+  reauthentication_token character varying DEFAULT ''::character varying,
+  reauthentication_sent_at timestamp with time zone,
+  is_sso_user boolean NOT NULL DEFAULT false,
+  deleted_at timestamp with time zone,
+  is_anonymous boolean NOT NULL DEFAULT false,
+  CONSTRAINT users_pkey PRIMARY KEY (id)
+);
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE realtime.messages (
+  topic text NOT NULL,
+  extension text NOT NULL,
+  payload jsonb,
+  event text,
+  private boolean DEFAULT false,
+  updated_at timestamp without time zone NOT NULL DEFAULT now(),
+  inserted_at timestamp without time zone NOT NULL DEFAULT now(),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  CONSTRAINT messages_pkey PRIMARY KEY (inserted_at, id)
+);
+CREATE TABLE realtime.schema_migrations (
+  version bigint NOT NULL,
+  inserted_at timestamp without time zone,
+  CONSTRAINT schema_migrations_pkey PRIMARY KEY (version)
+);
+CREATE TABLE realtime.subscription (
+  id bigint GENERATED ALWAYS AS IDENTITY NOT NULL,
+  subscription_id uuid NOT NULL,
+  entity regclass NOT NULL,
+  filters ARRAY NOT NULL DEFAULT '{}'::realtime.user_defined_filter[],
+  claims jsonb NOT NULL,
+  claims_role regrole NOT NULL DEFAULT realtime.to_regrole((claims ->> 'role'::text)),
+  created_at timestamp without time zone NOT NULL DEFAULT timezone('utc'::text, now()),
+  CONSTRAINT subscription_pkey PRIMARY KEY (id)
+);
