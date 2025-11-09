@@ -49,7 +49,7 @@ export const Header = memo(function Header() {
           <Link href="/" className="flex items-center gap-2 transition-all duration-300 hover:opacity-90 animate-logo-glow">
             <span className="rounded-full bg-background/80 shadow-lg p-1 border border-border overflow-hidden flex items-center justify-center">
               <Image
-                src="logo.png"
+                src="/logo.png"
                 alt="Rentimade"
                 width={48}
                 height={48}

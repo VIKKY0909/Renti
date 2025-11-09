@@ -24,24 +24,32 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
   const [images, setImages] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({})
-  // free-text range inputs like "28-44" supported
+  
   const router = useRouter()
 
-  const parseRangeToNumber = (value: string): number | null => {
-    if (!value) return null
+  const parseRange = (value: string): { min: number | null; max: number | null } => {
+    if (!value || !value.trim()) return { min: null, max: null }
+    
     const trimmed = value.trim()
-    // allow formats: "32", "28-44", "28 - 44"
-    const rangeMatch = trimmed.match(/^\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?\s*$/)
-    if (!rangeMatch) return null
-    const first = Number.parseFloat(rangeMatch[1])
-    const second = rangeMatch[2] ? Number.parseFloat(rangeMatch[2]) : null
-    if (Number.isNaN(first)) return null
-    if (second !== null && Number.isNaN(second)) return null
+    // Match formats: "32", "28-44", "28 - 44"
+    const rangeMatch = trimmed.match(/^\s*(\d+\.?\d*)\s*(?:-\s*(\d+\.?\d*))?\s*$/)
+    
+    if (!rangeMatch) return { min: null, max: null }
+    
+    const first = parseFloat(rangeMatch[1])
+    const second = rangeMatch[2] ? parseFloat(rangeMatch[2]) : null
+    
+    if (isNaN(first)) return { min: null, max: null }
+    if (second !== null && isNaN(second)) return { min: null, max: null }
+    
     if (second !== null) {
-      // Use the max of the range to represent the measurement
-      return Math.max(first, second)
+      return {
+        min: Math.min(first, second),
+        max: Math.max(first, second)
+      }
     }
-    return first
+    
+    return { min: first, max: null }
   }
 
   const validateForm = (formData: FormData): Record<string, string> => {
@@ -63,22 +71,29 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
       errors.short_description = "Short description must be at least 5 characters long"
     }
 
-    // Validate measurements
+    // Validate measurements with ranges
     const bustRaw = (formData.get("bust_size") as string) || ""
-    const bust = parseRangeToNumber(bustRaw)
-    if (bust === null || bust < 32 || bust > 200) {
-      errors.bust_size = "Enter bust like 28-44 or a single number (32-200)"
+    const bustRange = parseRange(bustRaw)
+    if (bustRange.min === null || bustRange.min < 28 || bustRange.min > 200) {
+      errors.bust_size = "Enter bust like 34 or 32-36 (28-200 inches)"
+    }
+    if (bustRange.max !== null && (bustRange.max < 28 || bustRange.max > 200)) {
+      errors.bust_size = "Bust max must be between 28-200 inches"
     }
 
     const waistRaw = (formData.get("waist_size") as string) || ""
-    const waist = parseRangeToNumber(waistRaw)
-    if (waist === null || waist < 15 || waist > 150) {
-      errors.waist_size = "Enter waist like 28-44 or a single number (15-150)"
+    const waistRange = parseRange(waistRaw)
+    if (waistRange.min === null || waistRange.min < 24 || waistRange.min > 150) {
+      errors.waist_size = "Enter waist like 28 or 26-32 (24-150 inches)"
+    }
+    if (waistRange.max !== null && (waistRange.max < 24 || waistRange.max > 150)) {
+      errors.waist_size = "Waist max must be between 24-150 inches"
     }
 
-    const length = parseFloat(formData.get("length_size") as string)
-    if (isNaN(length) || length < 20 || length > 300) {
-      errors.length_size = "Length must be between 20 and 300 inches"
+    const lengthRaw = (formData.get("length_size") as string) || ""
+    const lengthRange = parseRange(lengthRaw)
+    if (lengthRange.min === null || lengthRange.min < 20 || lengthRange.min > 300) {
+      errors.length_size = "Length must be between 20-300 inches"
     }
 
     // Validate pricing
@@ -153,11 +168,35 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
       if (Object.keys(errors).length > 0) {
         setValidationErrors(errors)
         setIsLoading(false)
-        // Scroll to first error field
         setTimeout(() => scrollToFirstError(errors), 100)
         return
       }
-      
+
+      // Parse ranges and add to formData
+      const bustRange = parseRange(formData.get("bust_size") as string)
+      if (bustRange.min !== null) {
+        formData.set("bust_min", bustRange.min.toString())
+        if (bustRange.max !== null) {
+          formData.set("bust_max", bustRange.max.toString())
+        }
+      }
+
+      const waistRange = parseRange(formData.get("waist_size") as string)
+      if (waistRange.min !== null) {
+        formData.set("waist_min", waistRange.min.toString())
+        if (waistRange.max !== null) {
+          formData.set("waist_max", waistRange.max.toString())
+        }
+      }
+
+      const lengthRange = parseRange(formData.get("length_size") as string)
+      if (lengthRange.min !== null) {
+        formData.set("length_min", lengthRange.min.toString())
+        if (lengthRange.max !== null) {
+          formData.set("length_max", lengthRange.max.toString())
+        }
+      }
+
       // Append images as a JSON string
       formData.append("images", JSON.stringify(images))
 
@@ -236,12 +275,12 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
                 <SelectTrigger className={`bg-transparent ${validationErrors.category ? 'border-destructive' : ''}`}>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Lehenga">Lehenga</SelectItem>
-                      <SelectItem value="Saree">Saree</SelectItem>
-                      <SelectItem value="Gown">Gown</SelectItem>
-                      <SelectItem value="Indo-Western">Indo-Western</SelectItem>
-                    </SelectContent>
+                <SelectContent>
+                  <SelectItem value="Lehenga">Lehenga</SelectItem>
+                  <SelectItem value="Saree">Saree</SelectItem>
+                  <SelectItem value="Gown">Gown</SelectItem>
+                  <SelectItem value="Indo-Western">Indo-Western</SelectItem>
+                </SelectContent>
               </Select>
               {validationErrors.category && (
                 <p className="text-destructive text-sm">{validationErrors.category}</p>
@@ -271,153 +310,151 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
             </div>
           </div>
 
-              {/* Photos */}
-              <div className="space-y-6">
-                <h2 className="font-semibold text-xl">Photos *</h2>
-                <p className="text-sm text-muted-foreground">Upload at least 3 high-quality photos of your dress</p>
+          {/* Photos */}
+          <div className="space-y-6">
+            <h2 className="font-semibold text-xl">Photos *</h2>
+            <p className="text-sm text-muted-foreground">Upload at least 3 high-quality photos of your dress</p>
 
-                {/* Debug Test Component */}
-               
-
-                <ImageUpload
-                  images={images}
-                  onImagesChange={setImages}
-                  maxImages={8}
-                  
-                  disabled={isLoading}
-                />
-                {validationErrors.images && (
-                  <p className="text-destructive text-sm">{validationErrors.images}</p>
-                )}
-              </div>
+            <ImageUpload
+              images={images}
+              onImagesChange={setImages}
+              maxImages={8}
+              disabled={isLoading}
+            />
+            {validationErrors.images && (
+              <p className="text-destructive text-sm">{validationErrors.images}</p>
+            )}
+          </div>
 
           {/* Measurements */}
           <div className="space-y-6">
             <h2 className="font-semibold text-xl">Measurements</h2>
+            <p className="text-sm text-muted-foreground">Enter single values (e.g., 34) or ranges (e.g., 32-36)</p>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="bust_size">Bust Size or Range (inches) *</Label>
-                    <Input 
-                      id="bust_size"
-                      name="bust_size" 
-                      type="text" 
-                      inputMode="numeric"
-                      placeholder="e.g., 34 or 28-44" 
-                      className={`bg-transparent ${validationErrors.bust_size ? 'border-destructive' : ''}`} 
-                      required 
-                    />
-                    <p className="text-xs text-muted-foreground">Enter a single number or range like 28-44</p>
-                    {validationErrors.bust_size && (
-                      <p className="text-destructive text-sm">{validationErrors.bust_size}</p>
-                    )}
-                  </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="bust_size">Bust Size (inches) *</Label>
+                <Input 
+                  id="bust_size"
+                  name="bust_size" 
+                  type="text" 
+                  placeholder="e.g., 34 or 32-36" 
+                  className={`bg-transparent ${validationErrors.bust_size ? 'border-destructive' : ''}`} 
+                  required 
+                />
+                <p className="text-xs text-muted-foreground">Single: 34 | Range: 32-36</p>
+                {validationErrors.bust_size && (
+                  <p className="text-destructive text-sm">{validationErrors.bust_size}</p>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="waist_size">Waist Size or Range (inches) *</Label>
-                    <Input 
-                      id="waist_size"
-                      name="waist_size" 
-                      type="text" 
-                      inputMode="numeric"
-                      placeholder="e.g., 28 or 26-44" 
-                      className={`bg-transparent ${validationErrors.waist_size ? 'border-destructive' : ''}`} 
-                      required 
-                    />
-                    <p className="text-xs text-muted-foreground">Enter a single number or range like 26-44</p>
-                    {validationErrors.waist_size && (
-                      <p className="text-destructive text-sm">{validationErrors.waist_size}</p>
-                    )}
-                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="waist_size">Waist Size (inches) *</Label>
+                <Input 
+                  id="waist_size"
+                  name="waist_size" 
+                  type="text" 
+                  placeholder="e.g., 28 or 26-30" 
+                  className={`bg-transparent ${validationErrors.waist_size ? 'border-destructive' : ''}`} 
+                  required 
+                />
+                <p className="text-xs text-muted-foreground">Single: 28 | Range: 26-30</p>
+                {validationErrors.waist_size && (
+                  <p className="text-destructive text-sm">{validationErrors.waist_size}</p>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="length_size">Length (inches) *</Label>
-                    <Input 
-                      id="length_size" 
-                      name="length_size" 
-                      type="number" 
-                      placeholder="e.g., 42" 
-                      className={`bg-transparent ${validationErrors.length_size ? 'border-destructive' : ''}`} 
-                      required 
-                    />
-                    {validationErrors.length_size && (
-                      <p className="text-destructive text-sm">{validationErrors.length_size}</p>
-                    )}
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="sleeve_length">Sleeve Length *</Label>
-                    <Select name="sleeve_length" required>
-                      <SelectTrigger className={`bg-transparent ${validationErrors.sleeve_length ? 'border-destructive' : ''}`}>
-                        <SelectValue placeholder="Select" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="sleeveless">Sleeveless</SelectItem>
-                        <SelectItem value="short">Short</SelectItem>
-                        <SelectItem value="3/4">3/4</SelectItem>
-                        <SelectItem value="full">Full</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {validationErrors.sleeve_length && (
-                      <p className="text-destructive text-sm">{validationErrors.sleeve_length}</p>
-                    )}
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="length_size">Length (inches) *</Label>
+                <Input 
+                  id="length_size" 
+                  name="length_size" 
+                  type="text" 
+                  placeholder="e.g., 42 or 40-44" 
+                  className={`bg-transparent ${validationErrors.length_size ? 'border-destructive' : ''}`} 
+                  required 
+                />
+                <p className="text-xs text-muted-foreground">Single: 42 | Range: 40-44</p>
+                {validationErrors.length_size && (
+                  <p className="text-destructive text-sm">{validationErrors.length_size}</p>
+                )}
+              </div>
+
+
+              <div className="space-y-2">
+                <Label htmlFor="sleeve_length">Sleeve Length *</Label>
+                <Select name="sleeve_length" required>
+                  <SelectTrigger className={`bg-transparent ${validationErrors.sleeve_length ? 'border-destructive' : ''}`}>
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sleeveless">Sleeveless</SelectItem>
+                    <SelectItem value="short">Short</SelectItem>
+                    <SelectItem value="3/4">3/4</SelectItem>
+                    <SelectItem value="full">Full</SelectItem>
+                  </SelectContent>
+                </Select>
+                {validationErrors.sleeve_length && (
+                  <p className="text-destructive text-sm">{validationErrors.sleeve_length}</p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Pricing */}
           <div className="space-y-6">
             <h2 className="font-semibold text-xl">Pricing</h2>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="rental_price">Rental Price (₹) *</Label>
-                    <Input 
-                      id="rental_price" 
-                      name="rental_price" 
-                      type="number" 
-                      placeholder="e.g., 2999" 
-                      className={`bg-transparent ${validationErrors.rental_price ? 'border-destructive' : ''}`} 
-                      required 
-                    />
-                    <p className="text-xs text-muted-foreground">Price for 3-4 days rental</p>
-                    {validationErrors.rental_price && (
-                      <p className="text-destructive text-sm">{validationErrors.rental_price}</p>
-                    )}
-                  </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="rental_price">Rental Price (₹) *</Label>
+                <Input 
+                  id="rental_price" 
+                  name="rental_price" 
+                  type="number" 
+                  placeholder="e.g., 2999" 
+                  className={`bg-transparent ${validationErrors.rental_price ? 'border-destructive' : ''}`} 
+                  required 
+                />
+                <p className="text-xs text-muted-foreground">Price per day</p>
+                {validationErrors.rental_price && (
+                  <p className="text-destructive text-sm">{validationErrors.rental_price}</p>
+                )}
+              </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="original_price">Original Price (₹) *</Label>
-                    <Input
-                      id="original_price"
-                      name="original_price"
-                      type="number"
-                      placeholder="e.g., 45000"
-                      className={`bg-transparent ${validationErrors.original_price ? 'border-destructive' : ''}`}
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">Actual purchase price</p>
-                    {validationErrors.original_price && (
-                      <p className="text-destructive text-sm">{validationErrors.original_price}</p>
-                    )}
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="original_price">Original Price (₹) *</Label>
+                <Input
+                  id="original_price"
+                  name="original_price"
+                  type="number"
+                  placeholder="e.g., 45000"
+                  className={`bg-transparent ${validationErrors.original_price ? 'border-destructive' : ''}`}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">Actual purchase price</p>
+                {validationErrors.original_price && (
+                  <p className="text-destructive text-sm">{validationErrors.original_price}</p>
+                )}
+              </div>
+            </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="security_deposit">Security Deposit (₹) *</Label>
-                  <Input 
-                    id="security_deposit" 
-                    name="security_deposit" 
-                    type="number" 
-                    placeholder="e.g., 5000" 
-                    className={`bg-transparent ${validationErrors.security_deposit ? 'border-destructive' : ''}`} 
-                    required 
-                  />
-                  <p className="text-xs text-muted-foreground">Refundable deposit amount</p>
-                  {validationErrors.security_deposit && (
-                    <p className="text-destructive text-sm">{validationErrors.security_deposit}</p>
-                  )}
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="security_deposit">Security Deposit (₹) *</Label>
+              <Input 
+                id="security_deposit" 
+                name="security_deposit" 
+                type="number" 
+                placeholder="e.g., 5000" 
+                className={`bg-transparent ${validationErrors.security_deposit ? 'border-destructive' : ''}`} 
+                required 
+              />
+              <p className="text-xs text-muted-foreground">Refundable deposit amount</p>
+              {validationErrors.security_deposit && (
+                <p className="text-destructive text-sm">{validationErrors.security_deposit}</p>
+              )}
+            </div>
           </div>
 
           {/* Availability */}
@@ -456,43 +493,43 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
           <div className="space-y-6">
             <h2 className="font-semibold text-xl">Additional Details</h2>
 
-                <div className="space-y-2">
-                  <Label htmlFor="fabric">Fabric Type *</Label>
-                  <Input 
-                    id="fabric" 
-                    name="fabric" 
-                    placeholder="e.g., Silk, Cotton, Georgette" 
-                    className={`bg-transparent ${validationErrors.fabric ? 'border-destructive' : ''}`} 
-                    required 
-                  />
-                  {validationErrors.fabric && (
-                    <p className="text-destructive text-sm">{validationErrors.fabric}</p>
-                  )}
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="fabric">Fabric Type *</Label>
+              <Input 
+                id="fabric" 
+                name="fabric" 
+                placeholder="e.g., Silk, Cotton, Georgette" 
+                className={`bg-transparent ${validationErrors.fabric ? 'border-destructive' : ''}`} 
+                required 
+              />
+              {validationErrors.fabric && (
+                <p className="text-destructive text-sm">{validationErrors.fabric}</p>
+              )}
+            </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="color">Color *</Label>
-                  <Input 
-                    id="color" 
-                    name="color" 
-                    placeholder="e.g., Royal Blue" 
-                    className={`bg-transparent ${validationErrors.color ? 'border-destructive' : ''}`} 
-                    required 
-                  />
-                  {validationErrors.color && (
-                    <p className="text-destructive text-sm">{validationErrors.color}</p>
-                  )}
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="color">Color *</Label>
+              <Input 
+                id="color" 
+                name="color" 
+                placeholder="e.g., Royal Blue" 
+                className={`bg-transparent ${validationErrors.color ? 'border-destructive' : ''}`} 
+                required 
+              />
+              {validationErrors.color && (
+                <p className="text-destructive text-sm">{validationErrors.color}</p>
+              )}
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="brand">Brand/Designer</Label>
               <Input id="brand" name="brand" placeholder="e.g., Sabyasachi, Manish Malhotra" className="bg-transparent" />
             </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="occasion">Occasion</Label>
-                  <Input id="occasion" name="occasion" placeholder="e.g., Wedding, Party, Festival" className="bg-transparent" />
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="occasion">Occasion</Label>
+              <Input id="occasion" name="occasion" placeholder="e.g., Wedding, Party, Festival" className="bg-transparent" />
+            </div>
           </div>
 
           {/* Submit Buttons */}
@@ -507,21 +544,21 @@ export function LendForm({ onSubmit, onCancel }: LendFormProps) {
             >
               Cancel
             </Button>
-                <Button
-                  type="submit"
-                  size="lg"
-                  className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
-                  disabled={isLoading || images.length === 0}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Submitting...
-                    </>
-                  ) : (
-                    "Submit for Review"
-                  )}
-                </Button>
+            <Button
+              type="submit"
+              size="lg"
+              className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={isLoading || images.length === 0}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                "Submit for Review"
+              )}
+            </Button>
           </div>
         </form>
       </div>

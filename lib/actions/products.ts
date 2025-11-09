@@ -20,7 +20,11 @@ export async function getProducts(filters?: {
       .select(
         `
         id, title, description, admin_description, short_description, brand, color, fabric, occasion,
-        rental_price, security_deposit, original_price, bust, waist, length, sleeve_length,
+        rental_price, security_deposit, original_price,
+        bust, waist, hip, shoulder, length, sleeve_length,
+        bust_min, bust_max, waist_min, waist_max,
+        hip_min, hip_max, length_min, length_max,
+        sleeve_length_min, sleeve_length_max, shoulder_min, shoulder_max,
         images, condition, status, is_available, total_rentals, average_rating,
         available_from, available_until, created_at, updated_at,
         owner:profiles!products_owner_id_fkey(id, full_name, avatar_url),
@@ -107,7 +111,11 @@ export async function getProductById(id: string) {
     .select(
       `
       id, title, description, admin_description, short_description, brand, color, fabric, occasion,
-      rental_price, security_deposit, original_price, bust, waist, length, sleeve_length,
+      rental_price, security_deposit, original_price,
+      bust, waist, hip, shoulder, length, sleeve_length,
+      bust_min, bust_max, waist_min, waist_max,
+      hip_min, hip_max, length_min, length_max,
+      sleeve_length_min, sleeve_length_max, shoulder_min, shoulder_max,
       images, condition, status, is_available, total_rentals, average_rating,
       available_from, available_until, created_at, updated_at,
       owner_id,
@@ -138,95 +146,122 @@ export async function getProductById(id: string) {
 }
 
 export async function createProduct(formData: FormData) {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-  if (!user) {
-    return { success: false, error: "Unauthorized" }
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    // === Basic text + numeric fields ===
+    const title = formData.get("title") as string
+    const description = formData.get("description") as string
+    const short_description = formData.get("short_description") as string
+    const category = formData.get("category") as string
+    const rental_price = parseFloat(formData.get("rental_price") as string)
+    const original_price = parseFloat(formData.get("original_price") as string)
+    const security_deposit = parseFloat(formData.get("security_deposit") as string)
+    const fabric = formData.get("fabric") as string
+    const color = formData.get("color") as string
+    const brand = formData.get("brand") as string
+    const occasion = formData.get("occasion") as string
+    const sleeve_length = formData.get("sleeve_length") as string
+    const available_from = formData.get("available_from") as string
+    const available_until = formData.get("available_until") as string
+
+    // === Measurement range fields ===
+    const bust_min = formData.get("bust_min")
+    const bust_max = formData.get("bust_max")
+    const waist_min = formData.get("waist_min")
+    const waist_max = formData.get("waist_max")
+    const hip_min = formData.get("hip_min")
+    const hip_max = formData.get("hip_max")
+    const length_min = formData.get("length_min")
+    const length_max = formData.get("length_max")
+    const sleeve_length_min = formData.get("sleeve_length_min")
+    const sleeve_length_max = formData.get("sleeve_length_max")
+    const shoulder_min = formData.get("shoulder_min")
+    const shoulder_max = formData.get("shoulder_max")
+
+    // === Get category_id ===
+    const { data: categoryData, error: categoryError } = await supabase
+      .from("categories")
+      .select("id")
+      .eq("name", category)
+      .single()
+
+    if (categoryError || !categoryData) {
+      console.error("[createProduct] Category lookup error:", categoryError)
+      return {
+        success: false,
+        error: `Invalid category: ${category}`,
+      }
+    }
+
+    // === Parse images from client ===
+    const images = JSON.parse(formData.get("images") as string) as string[]
+
+    const productData = {
+      owner_id: user.id,
+      category_id: categoryData.id,
+      title,
+      description,
+      short_description,
+      brand,
+      color,
+      fabric,
+      occasion,
+      rental_price,
+      security_deposit,
+      original_price,
+      sleeve_length,
+      available_from,
+      available_until,
+      images,
+      condition: "good",
+      status: "pending",
+      is_available: true,
+
+      // === New measurement fields ===
+      bust_min: bust_min ? parseFloat(bust_min as string) : null,
+      bust_max: bust_max ? parseFloat(bust_max as string) : null,
+      waist_min: waist_min ? parseFloat(waist_min as string) : null,
+      waist_max: waist_max ? parseFloat(waist_max as string) : null,
+      hip_min: hip_min ? parseFloat(hip_min as string) : null,
+      hip_max: hip_max ? parseFloat(hip_max as string) : null,
+      length_min: length_min ? parseFloat(length_min as string) : null,
+      length_max: length_max ? parseFloat(length_max as string) : null,
+      sleeve_length_min: sleeve_length_min ? parseFloat(sleeve_length_min as string) : null,
+      sleeve_length_max: sleeve_length_max ? parseFloat(sleeve_length_max as string) : null,
+      shoulder_min: shoulder_min ? parseFloat(shoulder_min as string) : null,
+      shoulder_max: shoulder_max ? parseFloat(shoulder_max as string) : null,
+    }
+
+    // === Insert ===
+    const { data, error } = await supabase
+      .from("products")
+      .insert(productData)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[createProduct] Insert error:", error)
+      return { success: false, error: error.message }
+    }
+
+    revalidatePath("/manage-listings")
+    return { success: true, product: data }
+  } catch (err) {
+    console.error("[createProduct] Unexpected error:", err)
+    return { success: false, error: "Unexpected error occurred" }
   }
-
-  const title = formData.get("title") as string
-  const description = formData.get("description") as string
-  const short_description = formData.get("short_description") as string
-  const category = formData.get("category") as string
-  const rental_price = Number.parseFloat(formData.get("rental_price") as string)
-  const original_price = Number.parseFloat(formData.get("original_price") as string)
-  const security_deposit = Number.parseFloat(formData.get("security_deposit") as string)
-  const fabric = formData.get("fabric") as string
-  const color = formData.get("color") as string
-  const brand = formData.get("brand") as string
-  const occasion = formData.get("occasion") as string
-  const parseRangeToNumber = (value: string | null): number | null => {
-    if (!value) return null
-    const trimmed = value.trim()
-    const rangeMatch = trimmed.match(/^\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?\s*$/)
-    if (!rangeMatch) return Number.parseFloat(trimmed)
-    const first = Number.parseFloat(rangeMatch[1])
-    const second = rangeMatch[2] ? Number.parseFloat(rangeMatch[2]) : null
-    if (Number.isNaN(first)) return null
-    if (second !== null && Number.isNaN(second)) return null
-    return second !== null ? Math.max(first, second) : first
-  }
-  const bust = parseRangeToNumber(formData.get("bust_size") as string)
-  const waist = parseRangeToNumber(formData.get("waist_size") as string)
-  const length = parseFloat(formData.get("length_size") as string)
-  const sleeve_length = formData.get("sleeve_length") as string
-  const available_from = formData.get("available_from") as string
-  const available_until = formData.get("available_until") as string
-
-  // Get category ID
-  const { data: categoryData, error: categoryError } = await supabase
-    .from("categories")
-    .select("id")
-    .eq("name", category)
-    .single()
-
-  if (categoryError || !categoryData) {
-    console.error("[v0] Category lookup error:", categoryError)
-    return { success: false, error: `Invalid category: ${category}. Please select a valid category from the dropdown.` }
-  }
-
-  // Extract images from form data
-  const images = JSON.parse(formData.get("images") as string) as string[]
-
-  const productData = {
-    owner_id: user.id,
-    category_id: categoryData.id,
-    title,
-    description,
-    short_description,
-    brand,
-    color,
-    fabric,
-    occasion,
-    rental_price,
-    security_deposit,
-    original_price,
-    bust: bust as number,
-    waist: waist as number,
-    length,
-    sleeve_length,
-    available_from,
-    available_until,
-    images,
-    condition: "good", // Default condition since form doesn't have this field
-    status: "pending",
-    is_available: true,
-  }
-
-  const { data, error } = await supabase.from("products").insert(productData).select().single()
-
-  if (error) {
-    console.error("[v0] Error creating product:", error)
-    return { success: false, error: error.message }
-  }
-
-  revalidatePath("/manage-listings")
-  return { success: true, product: data }
 }
+
+
 
 export async function updateProduct(id: string, formData: FormData) {
   const supabase = await createClient()
@@ -256,6 +291,26 @@ export async function updateProduct(id: string, formData: FormData) {
     return { success: false, error: "Cannot edit product that has active rentals" }
   }
 
+  // Helper to parse "12" or "12-18" into { min, max }
+  const parseRange = (value: string | null): { min: number | null; max: number | null } => {
+    const raw = (value || "").trim()
+    if (!raw) return { min: null, max: null }
+    const m = raw.match(/^\s*(\d+(?:\.\d+)?)\s*(?:-\s*(\d+(?:\.\d+)?))?\s*$/)
+    if (!m) {
+      const n = Number.parseFloat(raw)
+      return Number.isNaN(n) ? { min: null, max: null } : { min: n, max: null }
+    }
+    const a = Number.parseFloat(m[1])
+    const b = m[2] ? Number.parseFloat(m[2]) : null
+    if (Number.isNaN(a)) return { min: null, max: null }
+    if (b !== null && Number.isNaN(b)) return { min: null, max: null }
+    return b !== null ? { min: Math.min(a, b), max: Math.max(a, b) } : { min: a, max: null }
+  }
+
+  const bustRange = parseRange(formData.get("bust_size") as string | null)
+  const waistRange = parseRange(formData.get("waist_size") as string | null)
+  const lengthRange = parseRange(formData.get("length_size") as string | null)
+
   const productData = {
     title: formData.get("title") as string,
     description: formData.get("description") as string,
@@ -266,37 +321,13 @@ export async function updateProduct(id: string, formData: FormData) {
     rental_price: Number.parseFloat(formData.get("rental_price") as string),
     security_deposit: Number.parseFloat(formData.get("security_deposit") as string),
     original_price: formData.get("original_price") ? Number.parseFloat(formData.get("original_price") as string) : null,
-    bust: (() => {
-      const v = formData.get("bust_size") as string | null
-      const trimmed = (v || "").trim()
-      if (!trimmed) return null
-      const m = trimmed.match(/^\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?\s*$/)
-      if (!m) {
-        const n = Number.parseFloat(trimmed)
-        return Number.isNaN(n) ? null : n
-      }
-      const a = Number.parseFloat(m[1])
-      const b = m[2] ? Number.parseFloat(m[2]) : null
-      if (Number.isNaN(a)) return null
-      if (b !== null && Number.isNaN(b)) return null
-      return b !== null ? Math.max(a, b) : a
-    })(),
-    waist: (() => {
-      const v = formData.get("waist_size") as string | null
-      const trimmed = (v || "").trim()
-      if (!trimmed) return null
-      const m = trimmed.match(/^\s*(\d{1,3})(?:\s*-\s*(\d{1,3}))?\s*$/)
-      if (!m) {
-        const n = Number.parseFloat(trimmed)
-        return Number.isNaN(n) ? null : n
-      }
-      const a = Number.parseFloat(m[1])
-      const b = m[2] ? Number.parseFloat(m[2]) : null
-      if (Number.isNaN(a)) return null
-      if (b !== null && Number.isNaN(b)) return null
-      return b !== null ? Math.max(a, b) : a
-    })(),
-    length: formData.get("length_size") ? Number.parseFloat(formData.get("length_size") as string) : null,
+    // Ranges into *_min/_max; keep old single columns untouched
+    bust_min: bustRange.min,
+    bust_max: bustRange.max,
+    waist_min: waistRange.min,
+    waist_max: waistRange.max,
+    length_min: lengthRange.min,
+    length_max: lengthRange.max,
     sleeve_length: formData.get("sleeve_length") as string,
     available_from: formData.get("available_from") as string,
     available_until: formData.get("available_until") as string,
@@ -422,7 +453,11 @@ export async function getWishlist() {
       created_at,
       product:products(
         id, title, description, short_description, brand, color, fabric, occasion,
-        rental_price, security_deposit, original_price, bust, waist, length, sleeve_length,
+        rental_price, security_deposit, original_price,
+        bust, waist, hip, shoulder, length, sleeve_length,
+        bust_min, bust_max, waist_min, waist_max,
+        hip_min, hip_max, length_min, length_max,
+        sleeve_length_min, sleeve_length_max, shoulder_min, shoulder_max,
         images, condition, status, is_available, total_rentals, average_rating,
         available_from, available_until, created_at, updated_at,
         owner:profiles!products_owner_id_fkey(id, full_name, avatar_url),
@@ -457,7 +492,11 @@ export async function getUserProducts() {
     .select(
       `
       id, title, description, short_description, brand, color, fabric, occasion,
-      rental_price, security_deposit, original_price, bust, waist, length, sleeve_length,
+      rental_price, security_deposit, original_price,
+      bust, waist, hip, shoulder, length, sleeve_length,
+      bust_min, bust_max, waist_min, waist_max,
+      hip_min, hip_max, length_min, length_max,
+      sleeve_length_min, sleeve_length_max, shoulder_min, shoulder_max,
       images, condition, status, is_available, total_rentals, average_rating,
       available_from, available_until, created_at, updated_at,
       category:categories!products_category_id_fkey(id, name, slug),

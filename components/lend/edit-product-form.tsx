@@ -173,7 +173,9 @@ export function EditProductForm({ productId }: EditProductFormProps) {
                   name="bust_size" 
                   type="text" 
                   inputMode="numeric"
-                  defaultValue={product.bust}
+                  defaultValue={(product.bust_min && product.bust_max)
+                    ? `${product.bust_min}-${product.bust_max}`
+                    : (product.bust_min ?? product.bust ?? "")}
                   placeholder="e.g., 34 or 28-44" 
                   className="bg-transparent" 
                   required 
@@ -187,7 +189,9 @@ export function EditProductForm({ productId }: EditProductFormProps) {
                   name="waist_size" 
                   type="text" 
                   inputMode="numeric"
-                  defaultValue={product.waist}
+                  defaultValue={(product.waist_min && product.waist_max)
+                    ? `${product.waist_min}-${product.waist_max}`
+                    : (product.waist_min ?? product.waist ?? "")}
                   placeholder="e.g., 28 or 26-44" 
                   className="bg-transparent" 
                   required 
@@ -199,9 +203,12 @@ export function EditProductForm({ productId }: EditProductFormProps) {
                 <Input 
                   id="length_size" 
                   name="length_size" 
-                  type="number" 
-                  defaultValue={product.length}
-                  placeholder="e.g., 42" 
+                  type="text" 
+                  inputMode="numeric"
+                  defaultValue={(product.length_min && product.length_max)
+                    ? `${product.length_min}-${product.length_max}`
+                    : (product.length_min ?? product.length ?? "")}
+                  placeholder="e.g., 42 or 40-44" 
                   className="bg-transparent" 
                   required 
                 />

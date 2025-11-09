@@ -464,19 +464,53 @@ export function ProductDetails({ product }: ProductDetailsProps) {
             </div>
           </TabsContent>
           <TabsContent value="size" className="mt-8">
-            <SizeChart
-              sizes={{
-                bust: product.bust ? [product.bust.toString()] : [],
-                waist: product.waist ? [product.waist.toString()] : [],
-                length: product.length ? [product.length.toString()] : [],
-                sleeveLength: product.sleeve_length ? [product.sleeve_length.toString()] : [],
-                hip: product.hip ? [product.hip.toString()] : [],
-                shoulder: product.shoulder ? [product.shoulder.toString()] : [],
-              }}
-              selectedSize={selectedSize}
-              setSelectedSize={setSelectedSize}
-            />
-          </TabsContent>
+  <SizeChart
+    sizes={{
+      bust: (() => {
+        if (product.bust_min && product.bust_max) {
+          return [product.bust_min.toString(), product.bust_max.toString()];
+        } else if (product.bust_min) {
+          return [product.bust_min.toString()];
+        } else if (product.bust) {
+          return [product.bust.toString()];
+        }
+        return [];
+      })(),
+      waist: (() => {
+        if (product.waist_min && product.waist_max) {
+          return [product.waist_min.toString(), product.waist_max.toString()];
+        } else if (product.waist_min) {
+          return [product.waist_min.toString()];
+        } else if (product.waist) {
+          return [product.waist.toString()];
+        }
+        return [];
+      })(),
+      length: (() => {
+        if (product.length_min && product.length_max) {
+          return [product.length_min.toString(), product.length_max.toString()];
+        } else if (product.length_min) {
+          return [product.length_min.toString()];
+        } else if (product.length) {
+          return [product.length.toString()];
+        }
+        return [];
+      })(),
+      sleeveLength: (() => {
+        if (product.sleeve_length_min && product.sleeve_length_max) {
+          return [product.sleeve_length_min.toString(), product.sleeve_length_max.toString()];
+        } else if (product.sleeve_length_min) {
+          return [product.sleeve_length_min.toString()];
+        } else if (product.sleeve_length) {
+          return [product.sleeve_length.toString()];
+        }
+        return [];
+      })(),
+    }}
+    selectedSize={selectedSize}
+    setSelectedSize={setSelectedSize}
+  />
+</TabsContent>
           <TabsContent value="reviews" className="mt-8">
             <Reviews
               productId={product.id}
